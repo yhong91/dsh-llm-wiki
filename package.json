@@ -43,7 +43,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "smoke": "node scripts/smoke.mjs",
-    "test": "node --test test/"
+    "test": "node --test \"test/*.test.ts\""
   },
   "dsh": {
     "bundle": {

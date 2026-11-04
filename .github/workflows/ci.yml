@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [20, 22]
+        # The suite is TypeScript run directly by Node, which needs >= 22.6.
+        # The built plugin itself supports Node 20 (see package.json engines).
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
