@@ -36,6 +36,9 @@ jobs:
             exit 1
           fi
 
+      - name: Use a recent npm (Trusted Publishing needs >= 11.5.1)
+        run: npm install -g npm@latest
+
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm test
@@ -52,6 +55,12 @@ jobs:
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Authentication, in order of preference:
+      #  1. npm Trusted Publisher (OIDC): configure it on npmjs.com for this
+      #     repository and workflow file; no secret is stored anywhere.
+      #  2. A repository secret NPM_TOKEN (an Automation token) as a fallback.
+      # When NPM_TOKEN is unset the variable below is empty and npm falls back
+      # to the OIDC exchange, which needs `id-token: write` (granted above).
       - name: Publish
         if: steps.published.outputs.already == 'false'
         run: npm publish --access public --provenance
