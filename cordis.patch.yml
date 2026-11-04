@@ -1,0 +1,4 @@
+# Layer contributed when a profile installs @yhong91/dsh-llm-wiki.
+- insert:
+    - id: llm-wiki
+      name: '@yhong91/dsh-llm-wiki'

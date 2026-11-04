@@ -1,0 +1,28 @@
+# dependencies and build output
+node_modules/
+lib/
+*.tsbuildinfo
+coverage/
+
+# packed tarballs (published via npm, not git)
+*.tgz
+
+# upstream checkout and extracted dsh packages used for local study
+reference/
+
+# internal working notes: they record this machine's vault facts, local
+# gateway details and profile debugging; keep them out of the public repo
+notes/
+
+# local scratch, logs and editor/OS files
+.tmp/
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# secrets and local config
+.env
+.env.*
+*.local
+.npmrc

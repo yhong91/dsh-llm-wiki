@@ -1,0 +1,90 @@
+{
+  "name": "@yhong91/dsh-llm-wiki",
+  "version": "0.1.0",
+  "description": "Karpathy-style knowledge wiki for DeepSeek Harness — native tools, ambient recall, and guardrails over a pi-llm-wiki-compatible .llm-wiki (okf-0.2) vault.",
+  "license": "MIT",
+  "author": "yhong91",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yhong91/dsh-llm-wiki.git"
+  },
+  "homepage": "https://github.com/yhong91/dsh-llm-wiki#readme",
+  "bugs": {
+    "url": "https://github.com/yhong91/dsh-llm-wiki/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "llm-wiki",
+    "knowledge-base",
+    "memory"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./client": "./client.js"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "lib",
+    "client.js",
+    "cordis.patch.yml",
+    "skills",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "node --test test/"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.0"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@deepseek-ai/schemastery": "^3.18.1-rc.1",
+    "mdast-util-from-markdown": "^2.0.3",
+    "node-html-markdown": "^2.0.0",
+    "typebox": "^1.4.3",
+    "yaml": "^2.9.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-llm": "~0.2.1-rc.5",
+    "@deepseek-ai/dsh-tools": "~0.2.1-rc.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "optionalDependencies": {
+    "@tobilu/qmd": "2.8.3"
+  }
+}
