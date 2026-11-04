@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { homedir } from "node:os";
-import { statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 process.env.LLM_WIKI_HOST ??= "dsh";
@@ -10,6 +10,38 @@ const { validateArgs } = await import("@deepseek-ai/dsh-tools");
 const { DshRuntime } = await import("../lib/dsh/runtime.js");
 const { createExecApi } = await import("../lib/dsh/exec.js");
 const { loadTaskConfig } = await import("../lib/engine/task-config.js");
+const { bootstrapVault } = await import("../lib/engine/bootstrap.js");
+const { rebuildMetadata } = await import("../lib/engine/metadata.js");
+const { getVaultPaths } = await import("../lib/engine/utils.js");
+
+// A self-contained fixture vault: the suite must pass on any machine (CI
+// included) and never depend on, or touch, a real ~/.llm-wiki.
+const FIXTURE_PAGES = 12;
+const root = mkdtempSync(join(tmpdir(), "dsh-tools-test-"));
+const fixturePaths = getVaultPaths(root);
+assert.equal(bootstrapVault(fixturePaths, { topic: "fixture", mode: "personal" }).ok, true);
+for (let i = 0; i < FIXTURE_PAGES; i += 1) {
+  writeFileSync(
+    join(fixturePaths.wiki, "sources", `chaoxing-note-${i}.md`),
+    [
+      "---",
+      "type: source",
+      `title: "超星题库笔记 ${i}"`,
+      "status: insight",
+      "created: 2026-01-01",
+      "updated: 2026-01-01",
+      `slug: chaoxing-note-${i}`,
+      "---",
+      "",
+      `# 超星题库笔记 ${i}`,
+      "",
+      "超星题库分页参数是 pageNum。",
+      "",
+    ].join("\n"),
+    "utf-8",
+  );
+}
+rebuildMetadata(fixturePaths);
 
 const EXPECTED_TOOLS = [
   "wiki_bootstrap",
@@ -30,7 +62,7 @@ const EXPECTED_TOOLS = [
 ];
 
 function makeDeps() {
-  const cwd = () => homedir();
+  const cwd = () => root;
   const config = loadTaskConfig(cwd());
   const runtime = new DshRuntime({ config, report: () => {}, cwd });
   return {
@@ -47,7 +79,7 @@ const tools = buildWikiToolDefinitions(deps);
 const byName = new Map(tools.map((t) => [t.name, t]));
 
 const registryStat = () => {
-  const path = join(homedir(), ".llm-wiki", "meta", "registry.json");
+  const path = join(fixturePaths.meta, "registry.json");
   const s = statSync(path);
   return { mtimeMs: s.mtimeMs, size: s.size };
 };
@@ -76,7 +108,7 @@ test("every definition declares the full tool contract", () => {
   }
 });
 
-test("wiki_status returns the real vault counts read-only", async () => {
+test("wiki_status returns the fixture vault counts read-only", async () => {
   const tool = byName.get("wiki_status");
   assert.ok(tool);
   const value = (await tool.execute(
@@ -85,8 +117,8 @@ test("wiki_status returns the real vault counts read-only", async () => {
   )) as Record<string, unknown>;
   assert.equal(value.ok, true);
   assert.equal(value.knowledgeFormat, "okf-0.2");
-  assert.ok((value.totalPages as number) > 1000, `totalPages ${value.totalPages} > 1000`);
-  assert.ok((value.byType as Record<string, number>).source > 1000);
+  assert.ok((value.totalPages as number) >= FIXTURE_PAGES, `totalPages ${value.totalPages}`);
+  assert.ok((value.byType as Record<string, number>).source >= FIXTURE_PAGES);
 });
 
 test("wiki_recall returns hits for 超星", async () => {
@@ -127,4 +159,8 @@ test("the test run wrote nothing to the vault", () => {
   const afterRegistry = registryStat();
   assert.equal(afterRegistry.mtimeMs, beforeRegistry.mtimeMs, "registry mtime unchanged");
   assert.equal(afterRegistry.size, beforeRegistry.size, "registry size unchanged");
+});
+
+test("fixture vault is cleaned up", () => {
+  rmSync(root, { recursive: true, force: true });
 });
