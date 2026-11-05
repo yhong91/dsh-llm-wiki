@@ -6,6 +6,7 @@ import {
   type DashboardStats,
 } from "../engine/dashboard.js";
 import { resolveProjectSettingsPath } from "../engine/host.js";
+import { readCalls, type WikiCallEntry } from "../engine/call-log.js";
 import {
   loadTaskConfig,
   parseModelRef,
@@ -35,6 +36,9 @@ export interface DashboardEvent {
   readonly timestamp?: string;
 }
 
+/** One wiki read call (search / recall / auto-recall) from meta/calls.jsonl. */
+export interface DashboardCall extends WikiCallEntry {}
+
 export interface DashboardPayload {
   readonly generatedAt: string;
   readonly stats: DashboardStats;
@@ -42,6 +46,7 @@ export interface DashboardPayload {
   readonly mode?: string;
   readonly recentPages: DashboardPage[];
   readonly recentEvents: DashboardEvent[];
+  readonly recentCalls: DashboardCall[];
 }
 
 function readExcerpt(file: string): string {
@@ -130,6 +135,7 @@ export async function collectDashboardPayload(cwd: string): Promise<DashboardPay
       : {}),
     recentPages,
     recentEvents: recentEvents(paths.meta),
+    recentCalls: readCalls(paths, 30),
   };
 }
 

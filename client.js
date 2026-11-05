@@ -40,6 +40,10 @@ window.__ModuleLoader__.load({
         modelCleared: 'Background model reset to session model.',
         modelError: 'Could not update the background model.',
         modelSelect: 'Select a model…',
+        calls: 'Query log',
+        noCalls: 'No wiki queries logged yet.',
+        callAuto: 'auto',
+        callHits: 'hits',
       },
       zh: {
         panel: '知识库',
@@ -74,6 +78,10 @@ window.__ModuleLoader__.load({
         modelCleared: '后台模型已重置为会话模型。',
         modelError: '后台模型更新失败。',
         modelSelect: '选择模型…',
+        calls: '调用记录',
+        noCalls: '还没有查询记录。',
+        callAuto: '自动',
+        callHits: '条命中',
       },
     };
 
@@ -351,6 +359,23 @@ window.__ModuleLoader__.load({
               h('div', { className: 'llm-wiki-row-side', key: 'side' }, event.timestamp ? event.timestamp.slice(0, 10) : ''),
             ],
           ))),
+        ]) : null,
+        data ? h('div', { className: 'llm-wiki-section', key: 'calls' }, [
+          h('h2', { className: 'llm-wiki-section-title', key: 't' }, tr('calls', 'Query log')),
+          data.recentCalls?.length ? h('div', { className: 'llm-wiki-list', key: 'list' }, data.recentCalls.map((call, index) => h(
+            'div',
+            { className: 'llm-wiki-row', key: `call-${index}` },
+            [
+              h('div', { key: 'main' }, [
+                h('div', { className: 'llm-wiki-row-title', key: 'q' }, call.query),
+                h('div', { className: 'llm-wiki-row-meta', key: 'meta' }, call.tool === 'auto-recall' ? `${tr('callAuto', 'auto')} · wiki` : call.tool),
+              ]),
+              h('div', { className: 'llm-wiki-row-side', key: 'side' }, [
+                h('div', { key: 'n' }, `${call.hits} ${tr('callHits', 'hits')} · ${call.ms}ms`),
+                h('div', { key: 't' }, call.timestamp ? call.timestamp.replace('T', ' ').slice(0, 16) : ''),
+              ]),
+            ],
+          ))) : h('div', { className: 'llm-wiki-empty', key: 'empty' }, tr('noCalls', 'No wiki queries logged yet.')),
         ]) : null,
       ]);
     }

@@ -16,6 +16,7 @@ declare module "@deepseek-ai/dsh-llm" {
   }
 }
 import { bootstrapVault } from "../engine/bootstrap.js";
+import { appendCall } from "../engine/call-log.js";
 import { WIKI_STATUS_BLOCK } from "../engine/inject.js";
 import { buildReminderText, buildSessionNotice } from "../engine/observation.js";
 import {
@@ -367,8 +368,15 @@ Then call wiki_bootstrap with the inferred topic and mode to finalize the setup.
           // moved session re-reads project settings first. DshRuntime now
           // refreshes its shared config object from that cwd.
           deps.runtime.ensureConfig(cwd);
+          const startedAt = Date.now();
           const results = await searchWikiHybrid(paths, prompt, 3, 5, false, {
             config: deps.runtime.config,
+          });
+          appendCall(paths, {
+            tool: "auto-recall",
+            query: prompt.slice(0, 200),
+            hits: results.length,
+            ms: Date.now() - startedAt,
           });
           if (results.length > 0) {
             // Two-stage gate (issue #68): large vaults inject ranked links.

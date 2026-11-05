@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { defineTool, type ToolDefinition } from "@deepseek-ai/dsh-tools";
 import type { JsonValue } from "@deepseek-ai/dsh-util-values";
+import { appendCall } from "../engine/call-log.js";
 import { bootstrapVault } from "../engine/bootstrap.js";
 import { reindexEmbeddings, resolveEmbedder } from "../engine/embeddings.js";
 import { scheduleReindex } from "../engine/indexing.js";
@@ -631,7 +632,14 @@ export function buildWikiToolDefinitions(deps: WikiToolDeps): ToolDefinition[] {
       async execute(args, exec) {
         const p = paths(deps, exec);
         if (!vaultExists(p)) return noVaultResult();
+        const startedAt = Date.now();
         const result = searchRegistry(p, args.query, args.type);
+        appendCall(p, {
+          tool: "search",
+          query: String(args.query).slice(0, 200),
+          hits: result.matches.length,
+          ms: Date.now() - startedAt,
+        });
         return {
           ok: true,
           query: args.query,
@@ -1049,7 +1057,14 @@ export function buildWikiToolDefinitions(deps: WikiToolDeps): ToolDefinition[] {
         const p = paths(deps, exec);
         if (!vaultExists(p)) return noVaultResult();
         const maxResults = Math.min(args.max_results ?? 5, 10);
+        const startedAt = Date.now();
         const results = searchWikiLayered(p, args.query, maxResults);
+        appendCall(p, {
+          tool: "recall",
+          query: String(args.query).slice(0, 200),
+          hits: results.length,
+          ms: Date.now() - startedAt,
+        });
         const linksFirst = shouldUseLinksFirst(vaultPageCount(p, true), deps.config);
         return {
           ok: true,

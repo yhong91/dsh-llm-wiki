@@ -12,6 +12,7 @@ const { createExecApi } = await import("../lib/dsh/exec.js");
 const { loadTaskConfig } = await import("../lib/engine/task-config.js");
 const { bootstrapVault } = await import("../lib/engine/bootstrap.js");
 const { rebuildMetadata } = await import("../lib/engine/metadata.js");
+const { readCalls } = await import("../lib/engine/call-log.js");
 const { getVaultPaths } = await import("../lib/engine/utils.js");
 
 // A self-contained fixture vault: the suite must pass on any machine (CI
@@ -132,6 +133,20 @@ test("wiki_recall returns hits for 超星", async () => {
   assert.ok((value.count as number) > 0, "recall returned hits");
   const matches = value.matches as Array<{ id: string; title: string }>;
   assert.ok(matches.length > 0);
+});
+
+test("read tools log their calls to meta/calls.jsonl", async () => {
+  const search = byName.get("wiki_search");
+  const recall = byName.get("wiki_recall");
+  assert.ok(search && recall);
+  await search.execute({ query: "超星" }, { signal: new AbortController().signal });
+  await recall.execute({ query: "分页" }, { signal: new AbortController().signal });
+  const calls = readCalls(fixturePaths, 10);
+  assert.equal(calls.length >= 2, true);
+  assert.equal(calls[0].tool, "recall", "newest first");
+  assert.equal(calls[1].tool, "search");
+  assert.ok(calls[1].hits >= 1, "search logged its hit count");
+  assert.ok(calls[1].query.includes("超星"));
 });
 
 test("validateArgs rejects a wiki_recall call missing query", () => {
