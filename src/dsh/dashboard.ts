@@ -5,6 +5,12 @@ import {
   collectDashboardStats,
   type DashboardStats,
 } from "../engine/dashboard.js";
+import { resolveProjectSettingsPath } from "../engine/host.js";
+import {
+  loadTaskConfig,
+  parseModelRef,
+  persistTaskModel,
+} from "../engine/task-config.js";
 import { readJson, resolveVaultPaths } from "../engine/utils.js";
 
 /**
@@ -138,10 +144,194 @@ interface ConnectionLike {
   };
 }
 
+/** Minimal view of the DSH `llm` service the model route needs. */
+interface LlmServiceLike {
+  listProviders(): { id: string; name: string }[];
+  listModels(provider: string): Promise<
+    { provider: string; id: string; name: string; description?: string }[]
+  >;
+}
+
 function jsonResponse(value: unknown, status = 200): Response {
   return Response.json(value, {
     status,
     headers: { "cache-control": "no-store" },
+  });
+}
+
+/** One row of the model picker (catalog entry or current override). */
+export interface ModelOption {
+  readonly provider: string;
+  readonly id: string;
+  readonly name?: string;
+}
+
+/**
+ * The model-setting surface for the Web dashboard: the effective background
+ * task model (undefined = session model), the catalog the picker offers, and
+ * where the override is stored. `catalog` falls back to the current override
+ * alone when the llm service is unavailable (minimal profiles), so the panel
+ * can still display and clear it.
+ */
+export interface ModelSettingsPayload {
+  readonly taskModel?: { provider: string; id: string };
+  readonly catalog: ModelOption[];
+  readonly settingsFile: string;
+}
+
+const MAX_CATALOG = 60;
+
+async function collectModelSettings(
+  cwd: string,
+  llm: LlmServiceLike | undefined,
+): Promise<ModelSettingsPayload> {
+  const config = loadTaskConfig(cwd);
+  const catalog: ModelOption[] = [];
+  if (llm) {
+    for (const provider of llm.listProviders()) {
+      let models: ModelOption[] = [];
+      try {
+        models = (await llm.listModels(provider.id)) as ModelOption[];
+      } catch {
+        // A provider whose catalog cannot be listed is skipped, not fatal.
+      }
+      if (models.length === 0) {
+        catalog.push({ provider: provider.id, id: "", name: provider.name });
+      } else {
+        for (const model of models) {
+          if (model && typeof model.id === "string" && model.id) {
+            catalog.push({ provider: provider.id, id: model.id, name: model.name });
+          }
+        }
+      }
+      if (catalog.length >= MAX_CATALOG) break;
+    }
+  }
+  const taskModel = config.taskModel;
+  if (
+    taskModel &&
+    !catalog.some((entry) => entry.provider === taskModel.provider && entry.id === taskModel.id)
+  ) {
+    // The override was set elsewhere and is not advertised by any adapter;
+    // keep it pickable so the panel can display and clear it.
+    catalog.unshift(taskModel);
+  }
+  return {
+    ...(taskModel ? { taskModel } : {}),
+    catalog,
+    settingsFile: resolveProjectSettingsPath(cwd),
+  };
+}
+
+/**
+ * Register the model-setting route on the optional Host connection service.
+ *
+ *   POST /api/llm-wiki/model {cwd}                      → payload above
+ *   POST /api/llm-wiki/model {cwd, action:"set", model}  → persist provider/id
+ *   POST /api/llm-wiki/model {cwd, action:"clear"}       → revert to session model
+ *
+ * `set` validates through parseModelRef, persists via persistTaskModel into
+ * the project settings file, then refreshes the shared runtime config in
+ * place (via `onModelChange`) so the next background task already uses it —
+ * no restart needed.
+ */
+export function registerModelRoute(
+  ctx: Context,
+  deps: {
+    cwd(): string;
+    onModelChange?(): void;
+  },
+): void {
+  const injectable = ctx as Context & {
+    inject(services: string[], callback: (child: Context) => void): unknown;
+  };
+  injectable.inject(["connection"], (connectionCtx) => {
+    const child = connectionCtx as Context & { get(name: string): unknown };
+    const connection = child.get("connection") as ConnectionLike | undefined;
+    const register =
+      typeof connection?.fetch?.register === "function"
+        ? connection.fetch.register.bind(connection.fetch)
+        : undefined;
+    if (!register) return;
+    // The llm service is optional: without it the payload reports the current
+    // override only, and set/clear still work.
+    const llm = (() => {
+      try {
+        return child.get("llm") as LlmServiceLike | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
+    try {
+      connectionCtx.effect(
+        () => {
+          const dispose = register({
+            path: "/api/llm-wiki/model",
+            methods: ["POST"],
+            requestBody: "buffered",
+            fetch: async (request: Request) => {
+              let body: Record<string, unknown> = {};
+              try {
+                body = (await request.json()) as Record<string, unknown>;
+              } catch {
+                // Empty/non-JSON bodies use the process cwd.
+              }
+              const cwd =
+                typeof body.cwd === "string" && body.cwd.trim()
+                  ? body.cwd
+                  : deps.cwd();
+              try {
+                if (body.action === "set" || body.action === "clear") {
+                  const model =
+                    body.action === "clear"
+                      ? undefined
+                      : parseModelRef(
+                          typeof body.model === "string" ? body.model : "",
+                        );
+                  if (body.action === "set" && !model) {
+                    return jsonResponse(
+                      {
+                        ok: false,
+                        error: {
+                          code: "llm-wiki/invalid-model",
+                          message: 'model must be "provider/id" (non-empty on both sides)',
+                        },
+                      },
+                      400,
+                    );
+                  }
+                  persistTaskModel(cwd, model);
+                  deps.onModelChange?.();
+                  return jsonResponse({ ok: true, value: await collectModelSettings(cwd, llm) });
+                }
+                return jsonResponse({
+                  ok: true,
+                  value: await collectModelSettings(cwd, llm),
+                });
+              } catch (error) {
+                return jsonResponse(
+                  {
+                    ok: false,
+                    error: {
+                      code: "llm-wiki/model-route-failed",
+                      message: error instanceof Error ? error.message : String(error),
+                    },
+                  },
+                  500,
+                );
+              }
+            },
+          });
+          return () => {
+            if (typeof dispose === "function") (dispose as () => void)();
+          };
+        },
+        "llm-wiki: model route",
+      );
+    } catch {
+      // Connection routes are optional outside the Web app.
+    }
   });
 }
 

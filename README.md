@@ -7,7 +7,7 @@ use, so existing memory keeps working.
 
 Status: phase 3 — native tools, ambient recall, guardrails, commands, the
 bundled `llm-wiki` skill, background ingest synthesis (DSH subagents + jobs),
-the read-only Web wiki dashboard, the periodic observe/retro reminder, and
+the Web wiki dashboard (with a background-task model setting), the periodic observe/retro reminder, and
 opt-in agent-trajectory memory (`trajectories: true` or `/wiki-trajectories on`,
 then restart) are wired.
 

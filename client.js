@@ -30,6 +30,16 @@ window.__ModuleLoader__.load({
         readOnly: 'read-only',
         updated: 'updated',
         retry: 'Retry',
+        settings: 'Settings',
+        taskModel: 'Background task model',
+        taskModelHint: 'Model used for wiki background synthesis (ingest). Default: session model.',
+        sessionModel: 'Session model (default)',
+        apply: 'Apply',
+        clearModel: 'Reset',
+        modelApplied: 'Background model updated: ',
+        modelCleared: 'Background model reset to session model.',
+        modelError: 'Could not update the background model.',
+        modelSelect: 'Select a model…',
       },
       zh: {
         panel: '知识库',
@@ -54,6 +64,16 @@ window.__ModuleLoader__.load({
         readOnly: '只读',
         updated: '更新于',
         retry: '重试',
+        settings: '设置',
+        taskModel: '后台任务模型',
+        taskModelHint: 'Wiki 后台合成（资料摄取）使用的模型，默认跟随会话模型。',
+        sessionModel: '会话模型（默认）',
+        apply: '应用',
+        clearModel: '重置',
+        modelApplied: '后台模型已更新：',
+        modelCleared: '后台模型已重置为会话模型。',
+        modelError: '后台模型更新失败。',
+        modelSelect: '选择模型…',
       },
     };
 
@@ -85,6 +105,14 @@ window.__ModuleLoader__.load({
       .llm-wiki-row-side { color: var(--dsw-alias-label-secondary); font-size: 11px; white-space: nowrap; text-align: right; }
       .llm-wiki-empty { color: var(--dsw-alias-label-secondary); font-size: 13px; padding: 8px 0; }
       .llm-wiki-error { border-color: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-state-error-primary); }
+      .llm-wiki-model-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .llm-wiki-select { font: inherit; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 7px 10px; min-width: 220px; max-width: 100%; }
+      .llm-wiki-select:focus { outline: none; border-color: var(--dsw-alias-brand-primary); }
+      .llm-wiki-model-note { color: var(--dsw-alias-label-secondary); font-size: 12px; margin-top: 8px; overflow-wrap: anywhere; }
+      .llm-wiki-model-status { font-size: 12px; margin-top: 8px; }
+      .llm-wiki-model-status.ok { color: var(--dsw-alias-state-success-primary, var(--dsw-alias-label-secondary)); }
+      .llm-wiki-model-status.err { color: var(--dsw-alias-state-error-primary); }
+      .llm-wiki-refresh[disabled] { opacity: 0.5; cursor: default; }
       @media (max-width: 720px) { .llm-wiki-dashboard { padding: 20px 16px 36px; } .llm-wiki-head { flex-direction: column; } }
     `;
 
@@ -132,6 +160,101 @@ window.__ModuleLoader__.load({
         { className: 'llm-wiki-chip', key },
         [h('strong', { key: 'v' }, String(value)), h('span', { key: 'k' }, key)],
       )));
+    }
+
+    function ModelSettings() {
+      const [state, setState] = React.useState({ loading: true, data: null, error: '' });
+      const [choice, setChoice] = React.useState('');
+      const [busy, setBusy] = React.useState(false);
+      const [status, setStatus] = React.useState(null); // { ok: boolean, text: string }
+
+      const load = React.useCallback(async () => {
+        try {
+          const response = await fetch('api/llm-wiki/model', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload?.ok) throw new Error(payload?.error?.message || response.statusText);
+          const data = payload.value;
+          setState({ loading: false, data, error: '' });
+          const current = data.taskModel ? `${data.taskModel.provider}/${data.taskModel.id}` : '';
+          setChoice(current);
+        } catch (error) {
+          setState({ loading: false, data: null, error: error instanceof Error ? error.message : String(error) });
+        }
+      }, []);
+
+      React.useEffect(() => { load(); }, [load]);
+
+      const send = async (body) => {
+        setBusy(true);
+        setStatus(null);
+        try {
+          const response = await fetch('api/llm-wiki/model', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload?.ok) throw new Error(payload?.error?.message || response.statusText);
+          const data = payload.value;
+          setState({ loading: false, data, error: '' });
+          const current = data.taskModel ? `${data.taskModel.provider}/${data.taskModel.id}` : '';
+          setChoice(current);
+          setStatus({ ok: true, text: current ? `${tr('modelApplied', 'Background model updated: ')}${current}` : tr('modelCleared', 'Background model reset to session model.') });
+        } catch (error) {
+          setStatus({ ok: false, text: `${tr('modelError', 'Could not update the background model.')} ${error instanceof Error ? error.message : String(error)}` });
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      if (state.loading) return null;
+      if (state.error) {
+        return h('div', { className: 'llm-wiki-section', key: 'model' }, [
+          h('h2', { className: 'llm-wiki-section-title', key: 't' }, tr('taskModel', 'Background task model')),
+          h('div', { className: 'llm-wiki-empty', key: 'e' }, state.error),
+        ]);
+      }
+
+      const data = state.data;
+      const options = [
+        h('option', { key: 'session', value: '' }, tr('sessionModel', 'Session model (default)')),
+        ...(data?.catalog || []).map((entry, index) => entry.id
+          ? h('option', { key: `m-${index}`, value: `${entry.provider}/${entry.id}` }, `${entry.provider}/${entry.id}`)
+          : h('option', { key: `p-${index}`, value: `${entry.provider}/` }, `${entry.provider} · ${tr('modelSelect', 'Select a model…')}`)),
+      ].filter((option, index, all) => all.findIndex((other) => other.props.value === option.props.value) === index);
+
+      return h('div', { className: 'llm-wiki-section', key: 'model' }, [
+        h('h2', { className: 'llm-wiki-section-title', key: 't' }, tr('taskModel', 'Background task model')),
+        h('div', { className: 'llm-wiki-model-row', key: 'row' }, [
+          h('select', {
+            key: 'select',
+            className: 'llm-wiki-select',
+            value: choice,
+            disabled: busy,
+            onChange: (event) => setChoice(event.target.value),
+          }, options),
+          h('button', {
+            key: 'apply',
+            className: 'llm-wiki-refresh',
+            type: 'button',
+            disabled: busy || !choice,
+            onClick: () => send({ action: 'set', model: choice }),
+          }, tr('apply', 'Apply')),
+          h('button', {
+            key: 'clear',
+            className: 'llm-wiki-refresh',
+            type: 'button',
+            disabled: busy || !data?.taskModel,
+            onClick: () => send({ action: 'clear' }),
+          }, tr('clearModel', 'Reset')),
+        ]),
+        h('div', { className: 'llm-wiki-model-note', key: 'hint' }, tr('taskModelHint', 'Model used for wiki background synthesis (ingest). Default: session model.')),
+        status ? h('div', { className: `llm-wiki-model-status ${status.ok ? 'ok' : 'err'}`, key: 'status' }, status.text) : null,
+      ]);
     }
 
     function DashboardPage() {
@@ -199,6 +322,7 @@ window.__ModuleLoader__.load({
           h('h2', { className: 'llm-wiki-section-title', key: 't' }, tr('activity', 'Activity · last 7 days')),
           h(Chips, { key: 'c', pairs: eventPairs }),
         ]) : null,
+        h(ModelSettings, { key: 'model' }),
         data ? h('div', { className: 'llm-wiki-section', key: 'recent' }, [
           h('h2', { className: 'llm-wiki-section-title', key: 't' }, tr('recent', 'Recent pages')),
           data.recentPages?.length ? h('div', { className: 'llm-wiki-list', key: 'list' }, data.recentPages.map((page) => h(

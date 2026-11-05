@@ -16,7 +16,7 @@ import { registerAmbient } from "./dsh/ambient.js";
 import { buildTrajectoryToolDefinitions } from "./dsh/trajectory.js";
 import { Config, mergeTaskConfig } from "./dsh/config.js";
 import { registerCommands } from "./dsh/commands.js";
-import { registerDashboardRoute } from "./dsh/dashboard.js";
+import { registerDashboardRoute, registerModelRoute } from "./dsh/dashboard.js";
 import { createExecApi } from "./dsh/exec.js";
 import { registerGuardrails } from "./dsh/guardrails.js";
 import { DshRuntime } from "./dsh/runtime.js";
@@ -142,6 +142,19 @@ export function apply(ctx: Context, config: Partial<Config> | undefined) {
 
   // Read-only Web dashboard data route; the client half registers the panel.
   registerDashboardRoute(ctx);
+
+  // Web dashboard model setting: same compat settings persistTaskModel writes,
+  // applied immediately by refreshing the shared runtime config in place.
+  registerModelRoute(ctx, {
+    cwd,
+    onModelChange: () => {
+      try {
+        runtime.ensureConfig(cwd());
+      } catch {
+        // Best-effort refresh; the next settings read picks it up anyway.
+      }
+    },
+  });
 
   // Ambient surfaces: static wiki-status footer (systemPrompt section),
   // session-start notice/auto-bootstrap (agent/created), and per-turn recall
